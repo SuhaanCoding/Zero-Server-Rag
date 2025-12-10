@@ -1,9 +1,9 @@
 declare const self: DedicatedWorkerGlobalScope;
 
-self.addEventListener('message', (event) => {
+self.addEventListener('message', async (event) => {
     const { type, payload } = event.data;
 
-    console.log(`worker recieved a message of: ${type} type` );
+    console.log(`worker received a message of: ${type} type` );
     
     switch (type){
 
@@ -17,14 +17,11 @@ self.addEventListener('message', (event) => {
 
             self.postMessage({type :`RESULT`, payload: result})
             }
-            else { break; }
-
             break;
-
-
         
-        break;
-
+        default:
+            console.error(`A command has been receieved with ${type} and not certain what it is`)
+            self.postMessage({type: `error`, payload: {type}})
         
     }
 
