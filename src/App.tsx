@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 
 function App() {
   const [logs, setLogs] = useState<string[]>([]);
+  const [file, setFileUpload] = useState(null)
   const workerRef = useRef<Worker | null>(null);
 
   useEffect(() => {
@@ -14,6 +15,8 @@ function App() {
       setLogs(prevLogs => [...prevLogs, `[${type}], ${JSON.stringify(payload)}`])
 
     };
+    
+    return () => workerRef.current?.terminate();
 
   }, []);
   
@@ -28,6 +31,18 @@ function App() {
 
     )));
   
+
+  const handleFileUpload = async (event) => {
+    setFileUpload(event.target.files[0]);
+    const fileBuffer = await event.target.files[0].arrayBuffer();
+
+    workerRef.current?.postMessage({
+      type:'PARSE-PDF',
+      payload: fileBuffer,
+    });
+
+  }
+  
   
   return (
     <>
@@ -36,6 +51,16 @@ function App() {
           Testing Phase 1 
         </h1>
         <br />
+
+        <label className= "... cursor-pointer">
+          Upload PDF
+          <input
+            type = 'file'
+            accept = '.PDF'
+            className = 'hidden'
+            onChange={handleFileUpload}
+            />
+        </label>
         <button onClick={testconn}>
           (BUTTON IS HERE)
         </button>
