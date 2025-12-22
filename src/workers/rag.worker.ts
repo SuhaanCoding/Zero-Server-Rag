@@ -1,121 +1,90 @@
 import * as pdfjs from 'pdfjs-dist';
 import { pipeline, env } from '@xenova/transformers';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// 1. CONFIGURATION: Force download from Hugging Face (Fixes 404 Error)
 env.allowLocalModels = false;
 env.useBrowserCache = false;
+
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 declare const self: DedicatedWorkerGlobalScope;
 
-let extractor = null;
+// 2. SINGLETON: Only load the AI model ONCE.
+let extractor: any = null;
 
-const getTextFromPDF = async (pdfUrl) => {
+const getExtractor = async () => {
+    if (!extractor) {
+        console.log("Worker: Loading AI Model...");
+        extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    }
+    return extractor;
+}
+
+const getTextFromPDF = async (pdfUrl: ArrayBuffer) => {
     const pdf = await pdfjs.getDocument(pdfUrl).promise;
     let text = '';
-    for (let pagenum = 1;  pagenum <= pdf.numPages; pagenum++){
+    for (let pagenum = 1; pagenum <= pdf.numPages; pagenum++) {
         const page = await pdf.getPage(pagenum);
         const pageText = await page.getTextContent();
-        const strings = pageText.items.map((item: any) => item.str || '');
-        const pagestrings = strings.join(' ')
-        text = text + '\n\n' + pagestrings;
+        const strings = pageText.items.map((item: any) => item.str);
+        text += strings.join(' ') + '\n\n';
     }
     return text;
 }
 
-const vectorEmbeddings = async (content) => {
-    if (!extractor) {
-        extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-    }
-    const result = await extractor(content, {
-        pooling: 'mean',
-        normalize: true 
-    });
-
-    return Array.from(result.data);
-}
-
-const cleanPageText = (text) => {
+const cleanPageText = (text: string) => {
     return text
-        .replace(/[\x00-\x09\x0B-\x0C\x0E-\x1F\x7F]/g, "") 
-        .replace(/\s+/g, " ") 
-        .replace(/-\s/g, "") 
+        .replace(/[\x00-\x09\x0B-\x0C\x0E-\x1F\x7F]/g, "")
+        .replace(/\s+/g, " ")
         .trim();
-}
-
-const chunkText = (text, maxLength = 500, overlap = 50) => {
-    const allSentences = [];
-    const sentences = text.match(/[^.!?]+[.!?]+["']?|[^.!?]+$/g) || [text];
-    
-    let char = 0;
-    let curr_chunk = '';
-    
-    for (const sentence of sentences) {
-        const sentence_length = sentence.length;
-
-        if ((char + sentence_length) <= maxLength) {
-            curr_chunk += sentence + ' ';
-            char += sentence_length + 1;
-        } 
-        else {
-            if (curr_chunk) allSentences.push(curr_chunk.trim());
-
-            const overlapText = curr_chunk.slice(-overlap);
-            curr_chunk = overlapText + sentence + ' ';
-            char = curr_chunk.length;
-        }
-    }
-    
-    if (curr_chunk) {
-        allSentences.push(curr_chunk.trim());
-    }
-
-    return allSentences;
 }
 
 self.addEventListener('message', async (event) => {
     const { type, payload } = event.data;
-    console.log(`worker received a message of: ${type} type` );
-    
-    switch (type){
+
+    switch (type) {
         case 'TEST_CONN':
-            self.postMessage({
-                type: 'TEST_CONN',
-                payload: 'Connection has been established'
-            })
+            self.postMessage({ type: 'TEST_CONN', payload: 'Connection established' })
             break;
-        
+
         case 'PARSE-PDF':
             try {
+                // Step A: Extract Text
                 const allText = await getTextFromPDF(payload);
-                const parsedText = cleanPageText(allText);
-                const arraysOfText = chunkText(parsedText); 
-                
-                const totalEmbedded = [];
-                
-                for (const chunkString of arraysOfText){
-                    const Embedded = await vectorEmbeddings(chunkString);
-                    
-                    totalEmbedded.push({
-                        text: chunkString,
-                        vector: Embedded
-                    });
-                }
+                const cleanText = cleanPageText(allText);
 
+                // Step B: CHUNKING (Critical Fix)
+                // We split by double newline to get paragraphs.
+                const chunks = cleanText.split('\n\n').filter(c => c.length > 50);
+
+                console.log(`Worker: Chunked PDF into ${chunks.length} parts.`);
+
+                // Step C: Embeddings
+                const pipe = await getExtractor();
+
+                // LIMIT: Process only 3 chunks for testing (prevents browser freeze)
+                const output = await pipe(chunks.slice(0, 3), {
+                    pooling: 'mean',
+                    normalize: true
+                });
+
+                // Step D: Send Data Safely
                 self.postMessage({
                     type: 'PARSE-PDF',
-                    payload: parsedText,
+                    payload: {
+                        text: cleanText,           // Readable text for UI
+                        chunkCount: chunks.length, // Stats
+                        vectors: output.tolist()   // Numbers for the Console/Log
+                    }
                 });
 
-                self.postMessage({
-                    type: 'VECTOR-OUTPUT',
-                    payload: totalEmbedded
-                });
-            } catch (e) {
-                console.error(e);
-                self.postMessage({ type: 'ERROR', payload: e.message });
+            } catch (err: any) {
+                console.error("Worker Error:", err);
+                self.postMessage({ type: 'ERROR', payload: err.message })
             }
-            break; 
+            break;
 
         default:
-             console.error(`Unknown command: ${type}`);
+            console.error(`Unknown command: ${type}`)
     }
 });
