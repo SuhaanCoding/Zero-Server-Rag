@@ -1,73 +1,48 @@
-# React + TypeScript + Vite
+# ⚡ Zero-Server RAG Assistant
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **Run a full RAG (Retrieval-Augmented Generation) pipeline entirely in your browser. No API keys. No servers. 100% Privacy.**
 
-Currently, two official plugins are available:
+![License](https://img.shields.io/badge/license-MIT-blue.svg) ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue) ![React](https://img.shields.io/badge/React-18-cyan) ![Transformers.js](https://img.shields.io/badge/AI-Transformers.js-yellow)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 📖 Overview
 
-## React Compiler
+This project is a Proof-of-Concept for **Client-Side AI**. Unlike traditional RAG applications that send your sensitive PDF data to OpenAI or Pinecone, this application performs every step—PDF parsing, embedding generation, vector storage, and LLM inference—locally within the user's browser.
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+It utilizes **Web Workers** to ensure the UI remains buttery smooth while running heavy Transformer models in the background.
 
-## Expanding the ESLint configuration
+## 📸 Demo
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+![Application Screenshot](./assets/demo.png)
+*(Place a screenshot of your app here. If you don't have one yet, delete this line)*
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## ✨ Key Features
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+* **🔒 Complete Privacy**: Your documents never leave your device.
+* **💸 Zero Cost**: No bills from OpenAI, Anthropic, or vector database providers.
+* **⚡ Web Worker Architecture**: Heavy AI inference runs on a separate thread, preventing UI freezes.
+* **🧠 In-Browser Embeddings**: Uses `Xenova/all-MiniLM-L6-v2` for semantic search.
+* **🤖 Local LLM**: Uses `Xenova/LaMini-Flan-T5-248M` for text generation.
+* **📊 Real-time Metrics**: Tracks token speed (T/s), retrieval latency, and estimated cost savings.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🏗️ Architecture
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+How does it work without a backend?
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+```mermaid
+graph TD
+    User[User Uploads PDF] -->|ArrayBuffer| Worker[Web Worker]
+    
+    subgraph "Web Worker (Background Thread)"
+        Worker -->|PDF.js| Text[Raw Text]
+        Text -->|Chunking| Chunks[Text Segments]
+        Chunks -->|all-MiniLM-L6-v2| Vectors[Embeddings]
+        Vectors --> Store[(Local Vector Store)]
+        
+        Query[User Query] -->|all-MiniLM-L6-v2| QVec[Query Vector]
+        QVec -->|Cosine Similarity| Store
+        Store -->|Top 2 Contexts| Context
+        
+        Context + Query -->|LaMini-Flan-T5| Answer
+    end
+    
+    Answer -->|Post Message| UI[React UI]
