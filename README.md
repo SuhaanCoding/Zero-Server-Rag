@@ -13,7 +13,6 @@ It utilizes **Web Workers** to ensure the UI remains buttery smooth while runnin
 ## 📸 Demo
 
 ![Application Screenshot](./assets/demo.png)
-*(Place a screenshot of your app here. If you don't have one yet, delete this line)*
 
 ## ✨ Key Features
 
